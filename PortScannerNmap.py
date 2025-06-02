@@ -5,7 +5,7 @@ import ipaddress
 import sys
 
 def run_nmap_scan(ip, ports):
-    command = ["/usr/bin/nmap", "-p", ports, "-sV", "-oX", "-", ip]
+    command = ["/usr/bin/nmap", "-p", ports, "-sV", "--reason", "-Pn", "-oX", "-", ip]
     try:
         result = subprocess.run(command, capture_output=True, text=True, check=True)
         return result.stdout
@@ -56,8 +56,9 @@ def extract_ports_with_status(scan_json):
             portid = port.get('portid', '')
             protocol = port.get('protocol', '')
             state = port.get('state', {}).get('state', '')
+            reason = port.get('state', {}).get('reason', '')
             service = port.get('service', {}).get('name', 'unknown')
-            line = f"Port: {portid}/{protocol}, State: {state}, Service: {service}"
+            line = f"Port: {portid}/{protocol}, State: {state}, Reason: {reason}, Service: {service}"
             ports_list.append(line)
     except Exception:
         pass
