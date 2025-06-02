@@ -2,6 +2,7 @@ import socket
 import sys
 import ipaddress
 from datetime import datetime
+import json
 
 def port_name_service(port):
     try:
@@ -9,7 +10,7 @@ def port_name_service(port):
     except:
         return "unknown"
 
-def scan_port(ip, port, output_file):
+def scan_port(ip, port, output_file, results):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(1)
@@ -19,18 +20,36 @@ def scan_port(ip, port, output_file):
                 result_line = f"{ip} : Open port: {port}, Service: {service}"
                 print(result_line)
                 output_file.write(result_line + '\n')
+                results.append({
+                    "ip": ip,
+                    "port": port,
+                    "status": "open",
+                    "service": service
+                })
             else:
                 closed_line = f"{ip} : Closed port: {port}"
                 print(closed_line)
                 output_file.write(closed_line + '\n')
+                results.append({
+                    "ip": ip,
+                    "port": port,
+                    "status": "closed",
+                    "service": None
+                })
     except socket.error as e:
         error_line = f"Socket error on port {port}: {e}"
         print(error_line, file=sys.stderr)
         output_file.write(error_line + '\n')
+        results.append({
+            "ip": ip,
+            "port": port,
+            "status": "error",
+            "error": str(e)
+        })
 
-def scan_ports(ip, start_port, end_port, output_file):
+def scan_ports(ip, start_port, end_port, output_file, results):
     for port in range(start_port, end_port + 1):
-        scan_port(ip, port, output_file)
+        scan_port(ip, port, output_file, results)
 
 def main():
     print("Simple Port Scanner")
@@ -59,19 +78,34 @@ def main():
         sys.exit(1)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"scan_result_{ip_address}_{start_port}-{end_port}_{timestamp}.txt"
+    filename_txt = f"scan_result_{ip_address}_{start_port}-{end_port}_{timestamp}.txt"
+    filename_json = f"scan_result_{ip_address}_{start_port}-{end_port}_{timestamp}.json"
+
+    results = []
 
     try:
-        with open(filename, 'w') as output_file:
+        with open(filename_txt, 'w') as output_file:
             header = f"Scan results for {ip_address}, ports {start_port} to {end_port}\nStarted at {datetime.now()}\n{'-'*60}\n"
             output_file.write(header)
             print(header.strip())
-            scan_ports(ip_address, start_port, end_port, output_file)
-            print(f"\nScan completed. Results saved to {filename}")
+            scan_ports(ip_address, start_port, end_port, output_file, results)
+
+        # Guardar resultados en JSON
+        with open(filename_json, 'w') as json_file:
+            json.dump({
+                "scan_info": {
+                    "ip": ip_address,
+                    "start_port": start_port,
+                    "end_port": end_port,
+                    "timestamp": timestamp
+                },
+                "results": results
+            }, json_file, indent=4)
+
+        print(f"\nScan completed. Results saved to {filename_txt} and {filename_json}")
     except IOError as e:
         print(f"Failed to write to file: {e}", file=sys.stderr)
         sys.exit(1)
 
 if __name__ == '__main__':
     main()
-
