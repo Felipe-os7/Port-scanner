@@ -1,82 +1,78 @@
-import nmap
-import sys
-import ipaddress
-from datetime import datetime
+import subprocess
 import json
+from datetime import datetime
+import ipaddress
+import sys
+import xmltodict
+
+def run_nmap_scan(ip, ports):
+    # Arma el comando nmap
+    command = ["nmap", "-p", ports, "-sV", "-oX", "-", ip]
+    try:
+        print(f"\n🔎 Ejecutando: {' '.join(command)}\n")
+        result = subprocess.run(command, capture_output=True, text=True, check=True)
+        return result.stdout
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Error ejecutando nmap: {e}", file=sys.stderr)
+        sys.exit(1)
+
+def xml_to_json(xml_data):
+    try:
+        import xmltodict
+    except ImportError:
+        print("Instalando xmltodict...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "xmltodict"])
+        import xmltodict
+
+    parsed = xmltodict.parse(xml_data)
+    clean = remove_at_keys(parsed)
+    return json.dumps(clean, indent=4)
+
+def remove_at_keys(obj):
+    if isinstance(obj, dict):
+        new_dict = {}
+        for key, value in obj.items():
+            new_key = key.lstrip("@")
+            new_dict[new_key] = remove_at_keys(value)
+        return new_dict
+    elif isinstance(obj, list):
+        return [remove_at_keys(item) for item in obj]
+    else:
+        return obj
 
 def main():
-    print("Nmap Port Scanner (Python Wrapper)")
+    print("🔐 Nmap Port Scanner ")
 
-  
-    ip_input = input("Enter target IP address (e.g. 192.168.1.1): ").strip()
+    ip_input = input("📍 IP de destino: ").strip()
     try:
-        ip_address = str(ipaddress.ip_address(ip_input))
+        ip = str(ipaddress.ip_address(ip_input))
     except ValueError:
-        print("Invalid IP address.", file=sys.stderr)
-        sys.exit(1)
+        print("❌ Dirección IP inválida.")
+        return
 
-
-    port_input = input("Enter port range (e.g. 20-80 or single port like 80): ").strip()
-    if "-" not in port_input and not port_input.isdigit():
-        print("Invalid port range format.", file=sys.stderr)
-        sys.exit(1)
-
-    scanner = nmap.PortScanner()
+    port_input = input(" Puertos (ej. 22 o 20-80 o 80,443,8080): ").strip()
+    if not port_input:
+        print("❌ Rango de puertos inválido.")
+        return
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    txt_filename = f"nmap_scan_{ip_address}_{port_input}_{timestamp}.txt"
-    json_filename = f"nmap_scan_{ip_address}_{port_input}_{timestamp}.json"
+    txt_filename = f"nmap_scan_{ip}_{timestamp}.txt"
+    json_filename = f"nmap_scan_{ip}_{timestamp}.json"
 
-    try:
-        print(f"\nStarting scan on {ip_address} ports {port_input}...\n")
-        scanner.scan(hosts=ip_address, ports=port_input, arguments='-sS')
+    print("🕒 Iniciando escaneo...")
 
-        if ip_address not in scanner.all_hosts():
-            print(f"No results for host {ip_address}.")
-            with open(txt_filename, 'w') as txt_file:
-                txt_file.write(f"No response from host {ip_address}\n")
-            with open(json_filename, 'w') as json_file:
-                json.dump({"host": ip_address, "ports": []}, json_file, indent=4)
-            sys.exit(0)
+    xml_output = run_nmap_scan(ip, port_input)
 
-        txt_lines = []
-        json_data = {"host": ip_address, "ports": []}
+    with open(txt_filename, 'w') as f:
+        f.write(xml_output)
 
-        for proto in scanner[ip_address].all_protocols():
-            ports = scanner[ip_address][proto].keys()
-            for port in sorted(ports):
-                port_info = scanner[ip_address][proto][port]
-                state = port_info['state']
-                name = port_info.get('name', 'unknown')
-                product = port_info.get('product', '')
-                version = port_info.get('version', '')
+    json_data = xml_to_json(xml_output)
+    with open(json_filename, 'w') as f:
+        f.write(json_data)
 
-                line = f"Port {port}/{proto} is {state} - Service: {name} {product} {version}".strip()
-                print(line)
-                txt_lines.append(line)
+    print(f"\n✅ Escaneo completado.")
+    print(f"📄 XML (original): {txt_filename}")
+    print(f"🧾 JSON (limpio): {json_filename}")
 
-                json_data["ports"].append({
-                    "port": port,
-                    "protocol": proto,
-                    "state": state,
-                    "service": name,
-                    "product": product,
-                    "version": version
-                })
-       
-        with open(txt_filename, 'w') as txt_file:
-            txt_file.write(f"Scan results for {ip_address} (ports {port_input})\n")
-            txt_file.write(f"Started at {timestamp}\n{'-'*60}\n")
-            txt_file.write('\n'.join(txt_lines))
-
-        with open(json_filename, 'w') as json_file:
-            json.dump(json_data, json_file, indent=4)
-
-        print(f"\nScan completed. Results saved to:\n- {txt_filename}\n- {json_filename}")
-
-    except Exception as e:
-        print(f"Error during scan: {e}", file=sys.stderr)
-        sys.exit(1)
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
