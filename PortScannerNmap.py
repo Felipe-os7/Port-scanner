@@ -6,15 +6,17 @@ import sys
 import xmltodict
 
 def run_nmap_scan(ip, ports):
-    # Arma el comando nmap
     command = ["nmap", "-p", ports, "-sV", "-oX", "-", ip]
     try:
         print(f"\n🔎 Ejecutando: {' '.join(command)}\n")
         result = subprocess.run(command, capture_output=True, text=True, check=True)
         return result.stdout
     except subprocess.CalledProcessError as e:
-        print(f"❌ Error ejecutando nmap: {e}", file=sys.stderr)
+        print("❌ Nmap falló con el siguiente mensaje de error:\n", file=sys.stderr)
+        print(e.stderr.strip() if e.stderr else "No stderr disponible", file=sys.stderr)
+        print("\n🔁 Comando ejecutado:", ' '.join(command), file=sys.stderr)
         sys.exit(1)
+
 
 def xml_to_json(xml_data):
     try:
