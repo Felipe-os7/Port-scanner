@@ -1,11 +1,11 @@
 import subprocess
+import ipaddress
 import json
 from datetime import datetime
-import ipaddress
 import sys
 
-def run_nmap_scan(ip, ports):
-    command = ["/usr/bin/nmap", "-p", ports, "-sV", "--reason", "-Pn", "-oX", "-", ip]
+def run_nmap_grep_scan(ip, ports):
+    command = ["/usr/bin/nmap", "-p", ports, "-sV", "-Pn", "-oG", "-", ip]
     try:
         result = subprocess.run(command, capture_output=True, text=True, check=True)
         return result.stdout
@@ -17,52 +17,28 @@ def run_nmap_scan(ip, ports):
         print("STDERR:", e.stderr)
         sys.exit(1)
 
-def xml_to_json(xml_data):
-    try:
-        import xmltodict
-    except ImportError:
-        subprocess.run([sys.executable, "-m", "pip", "install", "xmltodict"], check=True)
-        import xmltodict
-    parsed = xmltodict.parse(xml_data)
-    clean = remove_at_keys(parsed)
-    return clean
-
-def remove_at_keys(obj):
-    if isinstance(obj, dict):
-        new_dict = {}
-        for key, value in obj.items():
-            new_key = key.lstrip("@")
-            new_dict[new_key] = remove_at_keys(value)
-        return new_dict
-    elif isinstance(obj, list):
-        return [remove_at_keys(item) for item in obj]
-    else:
-        return obj
-
-def extract_ports_with_status(scan_json):
-    ports_list = []
-    try:
-        hosts = scan_json['nmaprun']['host']
-        if isinstance(hosts, list):
-            host = hosts[0]
-        else:
-            host = hosts
-
-        ports = host.get('ports', {}).get('port', [])
-        if isinstance(ports, dict):
-            ports = [ports]
-
-        for port in ports:
-            portid = port.get('portid', '')
-            protocol = port.get('protocol', '')
-            state = port.get('state', {}).get('state', '')
-            reason = port.get('state', {}).get('reason', '')
-            service = port.get('service', {}).get('name', 'unknown')
-            line = f"Port: {portid}/{protocol}, State: {state}, Reason: {reason}, Service: {service}"
-            ports_list.append(line)
-    except Exception:
-        pass
-    return ports_list
+def parse_grepable_output(output):
+    ports = []
+    for line in output.splitlines():
+        if line.startswith("Host:"):
+            parts = line.split("Ports: ")
+            if len(parts) < 2:
+                continue
+            ports_part = parts[1].strip()
+            for port_entry in ports_part.split(","):
+                fields = port_entry.split("/")
+                if len(fields) >= 3:
+                    port_num = fields[0]
+                    state = fields[1]
+                    protocol = fields[2]
+                    service = fields[4] if len(fields) > 4 else "unknown"
+                    ports.append({
+                        "port": port_num,
+                        "state": state,
+                        "protocol": protocol,
+                        "service": service
+                    })
+    return ports
 
 def main():
     ip_input = input("IP: ").strip()
@@ -82,16 +58,16 @@ def main():
     txt_filename = f"nmap_scan_{ip}_{timestamp}.txt"
     json_filename = f"nmap_scan_{ip}_{timestamp}.json"
 
-    xml_output = run_nmap_scan(ip, port_input)
-    scan_json = xml_to_json(xml_output)
-    ports_info = extract_ports_with_status(scan_json)
+    output = run_nmap_grep_scan(ip, port_input)
+    ports_info = parse_grepable_output(output)
 
     with open(txt_filename, 'w') as f_txt:
-        for line in ports_info:
-            f_txt.write(line + '\n')
+        for port in ports_info:
+            line = f"Port: {port['port']}/{port['protocol']}, State: {port['state']}, Service: {port['service']}"
+            f_txt.write(line + "\n")
 
     with open(json_filename, 'w') as f_json:
-        json.dump(scan_json, f_json, indent=4)
+        json.dump(ports_info, f_json, indent=4)
 
     print(f"Resultados TXT: {txt_filename}")
     print(f"Resultados JSON: {json_filename}")
