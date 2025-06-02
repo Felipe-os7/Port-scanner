@@ -39,21 +39,21 @@ def remove_at_keys(obj):
     else:
         return obj
 
-def extract_open_ports(scan_json):
-    open_ports_list = []
+def extract_ports_with_status(scan_json):
+    ports_list = []
     try:
         ports = scan_json['nmaprun']['host']['ports']['port']
     except KeyError:
-        return open_ports_list
+        return ports_list
     if isinstance(ports, dict):
         ports = [ports]
     for port in ports:
+        portid = port.get('portid', '')
         state = port.get('state', {}).get('state', '')
-        if state == 'open':
-            portid = port.get('portid', '')
-            service = port.get('service', {}).get('name', 'unknown')
-            open_ports_list.append(f"Open port: {portid}, Service: {service}")
-    return open_ports_list
+        service = port.get('service', {}).get('name', 'unknown')
+        line = f"Port: {portid}, State: {state}, Service: {service}"
+        ports_list.append(line)
+    return ports_list
 
 def main():
     ip_input = input("IP: ").strip()
@@ -72,9 +72,9 @@ def main():
     json_filename = f"nmap_scan_{ip}_{timestamp}.json"
     xml_output = run_nmap_scan(ip, port_input)
     scan_json = xml_to_json(xml_output)
-    open_ports = extract_open_ports(scan_json)
+    ports_info = extract_ports_with_status(scan_json)
     with open(txt_filename, 'w') as f_txt:
-        for line in open_ports:
+        for line in ports_info:
             f_txt.write(line + '\n')
     with open(json_filename, 'w') as f_json:
         json.dump(scan_json, f_json, indent=4)
