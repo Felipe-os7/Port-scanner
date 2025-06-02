@@ -42,17 +42,25 @@ def remove_at_keys(obj):
 def extract_ports_with_status(scan_json):
     ports_list = []
     try:
-        ports = scan_json['nmaprun']['host']['ports']['port']
-    except KeyError:
-        return ports_list
-    if isinstance(ports, dict):
-        ports = [ports]
-    for port in ports:
-        portid = port.get('portid', '')
-        state = port.get('state', {}).get('state', '')
-        service = port.get('service', {}).get('name', 'unknown')
-        line = f"Port: {portid}, State: {state}, Service: {service}"
-        ports_list.append(line)
+        hosts = scan_json['nmaprun']['host']
+        if isinstance(hosts, list):
+            host = hosts[0]
+        else:
+            host = hosts
+
+        ports = host.get('ports', {}).get('port', [])
+        if isinstance(ports, dict):
+            ports = [ports]
+
+        for port in ports:
+            portid = port.get('portid', '')
+            protocol = port.get('protocol', '')
+            state = port.get('state', {}).get('state', '')
+            service = port.get('service', {}).get('name', 'unknown')
+            line = f"Port: {portid}/{protocol}, State: {state}, Service: {service}"
+            ports_list.append(line)
+    except Exception:
+        pass
     return ports_list
 
 def main():
@@ -62,22 +70,28 @@ def main():
     except ValueError:
         print("Dirección IP inválida.")
         sys.exit(1)
+
     port_input = input("Puertos (ej. 22 o 20-80 o 80,443): ").strip()
     if not port_input:
         print("Rango de puertos inválido.")
         sys.exit(1)
     port_input = port_input.replace(":", "-")
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     txt_filename = f"nmap_scan_{ip}_{timestamp}.txt"
     json_filename = f"nmap_scan_{ip}_{timestamp}.json"
+
     xml_output = run_nmap_scan(ip, port_input)
     scan_json = xml_to_json(xml_output)
     ports_info = extract_ports_with_status(scan_json)
+
     with open(txt_filename, 'w') as f_txt:
         for line in ports_info:
             f_txt.write(line + '\n')
+
     with open(json_filename, 'w') as f_json:
         json.dump(scan_json, f_json, indent=4)
+
     print(f"Resultados TXT: {txt_filename}")
     print(f"Resultados JSON: {json_filename}")
 
